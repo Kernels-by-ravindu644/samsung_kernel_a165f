@@ -68,8 +68,7 @@ export GKI_KERNEL_BUILD_OPTIONS="
     AVB_BOOT_KEY=${WDIR}/mkbootimg/tests/data/testkey_rsa2048.pem \
     AVB_BOOT_ALGORITHM=SHA256_RSA2048 \
     AVB_BOOT_PARTITION_NAME=boot \
-    GKI_RAMDISK_PREBUILT_BINARY=ramdisk.img.lz4 \
-    LZ4_RAMDISK=1 \
+    GKI_RAMDISK_PREBUILT_BINARY=${WDIR}/oem_prebuilt_images/gki-ramdisk.lz4 \
 "
 
 # Build options (extra)
@@ -78,6 +77,7 @@ export MKBOOTIMG_EXTRA_ARGS="
     --os_patch_level 2025-03-00 \
     --pagesize 4096 \
 "
+export GKI_RAMDISK_PREBUILT_BINARY="${WDIR}/oem_prebuilt_images/gki-ramdisk.lz4"
 
 # Run menuconfig only if you want to.
 # It's better to use MAKE_MENUCONFIG=0 when everything is already properly enabled, disabled, or configured.
