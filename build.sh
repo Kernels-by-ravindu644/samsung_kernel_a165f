@@ -17,3 +17,11 @@ if [ ! -f ".requirements" ]; then
         sudo apt install -y rsync python2
     } && touch .requirements
 fi
+
+# Init Samsung's ndk
+if [[ ! -d "${WDIR}/kernel/prebuilts" || ! -d "${WDIR}/prebuilts" ]]; then
+    echo -e "\n[INFO] Cloning Samsung's NDK...\n"
+    curl -LO "https://github.com/ravindu644/android_kernel_a165f/releases/download/toolchain/toolchain.tar.gz"
+    tar -xf toolchain.tar.gz && rm toolchain.tar.gz
+    cd "${WDIR}"
+fi
