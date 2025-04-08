@@ -91,4 +91,6 @@ fi
 cd "${WDIR}/kernel"
 
 # Main cooking progress
-env ${GKI_KERNEL_BUILD_OPTIONS} ./build/build.sh
+( env ${GKI_KERNEL_BUILD_OPTIONS} ./build/build.sh || exit 1 ) && \
+    ( cp "${WDIR}/out/target/product/a16/obj/KERNEL_OBJ/boot.img" "${WDIR}/dist" 
+      cp "${WDIR}/out/target/product/a16/obj/KERNEL_OBJ/kernel-5.10/arch/arm64/boot/Image.gz" "${WDIR}/dist" )
