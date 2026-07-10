@@ -40,6 +40,8 @@ export BUILD_CONFIG="../out/target/product/a16/obj/KERNEL_OBJ/build.config"
 GKI_KERNEL_BUILD_OPTIONS=(
     "LTO=thin"
     "SKIP_MRPROPER=1"
+    "KMI_SYMBOL_LIST_STRICT_MODE=0"
+    "ABI_DEFINITION="
 )
 
 # build the kernel
