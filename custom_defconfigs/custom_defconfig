@@ -6,3 +6,6 @@ CONFIG_FIVE=n
 
 # KernelSU-Next
 CONFIG_KSU=y
+
+# ntsync
+CONFIG_NTSYNC=y
