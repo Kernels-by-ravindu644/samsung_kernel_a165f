@@ -44,6 +44,12 @@ GKI_KERNEL_BUILD_OPTIONS=(
     "ABI_DEFINITION="
 )
 
+# run menuconfig only if you want to.
+export MAKE_MENUCONFIG=0
+if [ "$MAKE_MENUCONFIG" = "1" ]; then
+    export HERMETIC_TOOLCHAIN=0
+fi
+
 # build the kernel
 build_kernel(){
     cd "${SCRIPT_DIR}/kernel"
