@@ -13,9 +13,9 @@ import re
 # Parse project defconfig to get special config file, build config file and out-of-tree kernel modules
 def get_config_in_defconfig(file_name, kernel_dir):
     file_handle = open(file_name, 'r')
-    pattern_cficlang = re.compile('^CONFIG_CFI_CLANG\s*=\s*(.+)$')
-    pattern_buildconfig = re.compile('^CONFIG_BUILD_CONFIG_FILE\s*=\s*(.+)$')
-    pattern_extmodules = re.compile('^CONFIG_EXT_MODULES\s*=\s*(.+)$')
+    pattern_cficlang = re.compile(r'^CONFIG_CFI_CLANG\s*=\s*(.+)$')
+    pattern_buildconfig = re.compile(r'^CONFIG_BUILD_CONFIG_FILE\s*=\s*(.+)$')
+    pattern_extmodules = re.compile(r'^CONFIG_EXT_MODULES\s*=\s*(.+)$')
     special_defconfig = ''
     build_config = ''
     ext_modules = ''
@@ -33,12 +33,12 @@ def get_config_in_defconfig(file_name, kernel_dir):
     return (special_defconfig, build_config, ext_modules)
 
 def help():
-    print 'Usage:'
-    print '  python scripts/gen_build_config.py --project <project> --kernel-defconfig <kernel project defconfig file> --kernel-defconfig-overlays <kernel project overlay defconfig files> --kernel-build-config-overlays <kernel build config overlays> --build-mode <mode> --out-file <gen build.config>'
-    print 'Or:'
-    print '  python scripts/gen_build_config.py -p <project> --kernel-defconfig <kernel project defconfig file> --kernel-defconfig-overlays <kernel project overlay defconfig files> --kernel-build-config-overlays <kernel build config overlays> -m <mode> -o <gen build.config>'
-    print ''
-    print 'Attention: Must set generated build.config, and project or kernel project defconfig file!!'
+    print('Usage:')
+    print('  python scripts/gen_build_config.py --project <project> --kernel-defconfig <kernel project defconfig file> --kernel-defconfig-overlays <kernel project overlay defconfig files> --kernel-build-config-overlays <kernel build config overlays> --build-mode <mode> --out-file <gen build.config>')
+    print('Or:')
+    print('  python scripts/gen_build_config.py -p <project> --kernel-defconfig <kernel project defconfig file> --kernel-defconfig-overlays <kernel project overlay defconfig files> --kernel-build-config-overlays <kernel build config overlays> -m <mode> -o <gen build.config>')
+    print('')
+    print('Attention: Must set generated build.config, and project or kernel project defconfig file!!')
     sys.exit(2)
 
 def main(**args):
@@ -79,7 +79,7 @@ def main(**args):
     elif os.path.exists('%s/arch/arm64/configs/%s' % (abs_kernel_dir, project_defconfig_name)):
         defconfig_dir = 'arch/arm64/configs'
     else:
-        print 'Error: cannot find project defconfig file under ' + abs_kernel_dir
+        print('Error: cannot find project defconfig file under ' + abs_kernel_dir)
         sys.exit(2)
     project_defconfig = '%s/%s/%s' % (abs_kernel_dir, defconfig_dir, project_defconfig_name)
 
@@ -98,20 +98,20 @@ def main(**args):
         file_handle = open(build_config, 'r')
         for line in file_handle.readlines():
             line_strip = line.strip()
-            pattern_cc = re.compile('^CC\s*=\s*(.+)$')
+            pattern_cc = re.compile(r'^CC\s*=\s*(.+)$')
             result = pattern_cc.match(line_strip)
             if result:
                 line_strip = 'CC=\"${CC_WRAPPER} %s\"' % (result.group(1).strip())
             line_strip = line_strip.replace("$$","$")
             file_text.append(line_strip)
-            pattern_kernel_dir = re.compile('^KERNEL_DIR\s*=\s*(.+)$')
+            pattern_kernel_dir = re.compile(r'^KERNEL_DIR\s*=\s*(.+)$')
             result = pattern_kernel_dir.match(line_strip)
             if result:
                 kernel_dir = result.group(1).strip('')
         file_handle.close()
     else:
-        print 'Error: cannot get build.config under ' + abs_kernel_dir + '.'
-        print 'Please check whether ' + project_defconfig + ' defined CONFIG_BUILD_CONFIG_FILE.'
+        print('Error: cannot get build.config under ' + abs_kernel_dir + '.')
+        print('Please check whether ' + project_defconfig + ' defined CONFIG_BUILD_CONFIG_FILE.')
         sys.exit(2)
 
     file_text.append("PATH=${ROOT_DIR}/../prebuilts/perl/linux-x86/bin:${ROOT_DIR}/build/build-tools/path/linux-x86:/usr/bin:/bin")
@@ -169,7 +169,7 @@ def main(**args):
         file_handle = open(gki_build_config, 'r')
         for line in file_handle.readlines():
             line_strip = line.strip()
-            pattern_source = re.compile('^\.\s.+$')
+            pattern_source = re.compile(r'^\.\s.+$')
             result = pattern_source.match(line_strip)
             if not result:
                 file_text.append(line_strip)
@@ -191,7 +191,7 @@ def main(**args):
     file_handle.write(kernel_defconfig_cmds + '\n')
 
     file_handle.write('\nBUILD_CONFIG_FRAGMENTS="${KERNEL_DIR}/build.config.common"\n')
-    file_handle.write('GET_CONFIG_ABI_MONITOR=`grep \"^CONFIG_ABI_MONITOR\s*=\s*y\" ${KERNEL_DEFCONFIG_FILE} | xargs`\n')
+    file_handle.write('GET_CONFIG_ABI_MONITOR=`grep \"^CONFIG_ABI_MONITOR\\s*=\\s*y\" ${KERNEL_DEFCONFIG_FILE} | xargs`\n')
     file_handle.write('if [ "${KERNEL_BUILD_MODE}" == "user" ] && [ "x${GET_CONFIG_ABI_MONITOR}" != "x" ]; then\n')
     file_handle.write('  DO_ABI_MONITOR=1\n')
     build_config_fragments = '  BUILD_CONFIG_FRAGMENTS="${BUILD_CONFIG_FRAGMENTS} ${REL_GEN_BUILD_CONFIG_DIR}/%s' % (os.path.basename(gen_build_config_gki))
