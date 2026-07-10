@@ -17,3 +17,10 @@ CONFIG_BBG=y
 # bbrv3
 CONFIG_TCP_CONG_ADVANCED=y
 CONFIG_TCP_CONG_BBR3=y
+
+# qdiscs: fq/fq_codel/cake/pie/fq_pie for bufferbloat control + BBR3 pacing (fq)
+CONFIG_NET_SCH_FQ=y
+CONFIG_NET_SCH_FQ_CODEL=y
+CONFIG_NET_SCH_CAKE=y
+CONFIG_NET_SCH_PIE=y
+CONFIG_NET_SCH_FQ_PIE=y
