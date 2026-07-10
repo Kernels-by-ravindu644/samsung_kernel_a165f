@@ -26,6 +26,16 @@ cd "${SCRIPT_DIR}/kernel-5.10" && \
         -o ../out/target/product/a16/obj/KERNEL_OBJ/build.config && \
         cd "${SCRIPT_DIR}"
 
+# generate localversion
+BUILD_VERSION=$(git log -1 --pretty=%h 2>/dev/null)
+if [ -z "$BUILD_VERSION" ]; then
+    export BUILD_VERSION="dev"
+fi
+cat << EOF > "${SCRIPT_DIR}/custom_defconfigs/version_defconfig"
+CONFIG_LOCALVERSION_AUTO=n
+CONFIG_LOCALVERSION="-ravindu644-${BUILD_VERSION}"
+EOF
+
 # export environment variables from the samsung's build_kernel.sh
 export ARCH=arm64
 export PLATFORM_VERSION=13

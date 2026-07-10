@@ -133,6 +133,7 @@ kernel/configs/android-*.cfg
 # dir
 /dist/
 /out/
+/custom_defconfigs/version_defconfig
 /kernel/prebuilts-master/
 /kernel/prebuilts/
 /prebuilts/
