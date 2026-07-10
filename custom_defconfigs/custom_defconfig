@@ -9,3 +9,7 @@ CONFIG_KSU=y
 
 # ntsync
 CONFIG_NTSYNC=y
+
+# BBG - https://github.com/vc-teahouse/Baseband-guard
+CONFIG_LSM="lockdown,yama,loadpin,safesetid,integrity,selinux,smack,tomoyo,apparmor,bpf,baseband_guard"
+CONFIG_BBG=y
