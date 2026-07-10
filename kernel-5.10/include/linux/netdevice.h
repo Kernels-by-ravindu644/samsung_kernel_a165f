@@ -2186,6 +2186,7 @@ struct net_device {
 
 	/* for setting kernel sock attribute on TCP connection setup */
 #define GSO_MAX_SIZE		65536
+#define GSO_LEGACY_MAX_SIZE	65536u
 	unsigned int		gso_max_size;
 #define GSO_MAX_SEGS		65535
 	u16			gso_max_segs;

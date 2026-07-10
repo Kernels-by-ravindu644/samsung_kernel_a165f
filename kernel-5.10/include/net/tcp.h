@@ -51,6 +51,23 @@ extern struct inet_hashinfo tcp_hashinfo;
 extern struct percpu_counter tcp_orphan_count;
 void tcp_time_wait(struct sock *sk, int state, int timeo);
 
+struct tcp_plb_sysctl_params {
+	u8 sysctl_tcp_plb_enabled;
+	u8 sysctl_tcp_plb_idle_rehash_rounds;
+	u8 sysctl_tcp_plb_rehash_rounds;
+	u8 sysctl_tcp_plb_suspend_rto_sec;
+	int sysctl_tcp_plb_cong_thresh;
+};
+
+struct tcp_plb_net_context {
+	struct tcp_plb_sysctl_params params;
+	struct ctl_table_header *sysctl_header;
+};
+
+extern unsigned int tcp_plb_net_id;
+
+struct tcp_plb_net_context *tcp_get_plb_ctx(struct net *net);
+
 #define MAX_TCP_HEADER	L1_CACHE_ALIGN(128 + MAX_HEADER)
 #define MAX_TCP_OPTION_SPACE 40
 #define TCP_MIN_SND_MSS		48
@@ -372,6 +389,8 @@ static inline void tcp_dec_quickack_mode(struct sock *sk)
 #define	TCP_ECN_QUEUE_CWR	2
 #define	TCP_ECN_DEMAND_CWR	4
 #define	TCP_ECN_SEEN		8
+#define	TCP_ECN_LOW				16
+#define	TCP_ECN_ECT_PERMANENT	32
 
 enum tcp_tw_status {
 	TCP_TW_SUCCESS = 0,
@@ -708,6 +727,15 @@ static inline void tcp_fast_path_check(struct sock *sk)
 		tcp_fast_path_on(tp);
 }
 
+static inline void tcp_set_ecn_low_from_dst(struct sock *sk,
+					    const struct dst_entry *dst)
+{
+	struct tcp_sock *tp = tcp_sk(sk);
+
+	if (dst_feature(dst, RTAX_FEATURE_ECN_LOW))
+		tp->ecn_flags |= TCP_ECN_LOW;
+}
+
 /* Compute the actual rto_min value */
 static inline u32 tcp_rto_min(struct sock *sk)
 {
@@ -804,6 +832,11 @@ static inline u32 tcp_stamp_us_delta(u64 t1, u64 t0)
 	return max_t(s64, t1 - t0, 0);
 }
 
+static inline u32 tcp_stamp32_us_delta(u32 t1, u32 t0)
+{
+	return max_t(s32, t1 - t0, 0);
+}
+
 static inline u32 tcp_skb_timestamp(const struct sk_buff *skb)
 {
 	return tcp_ns_to_ts(skb->skb_mstamp_ns);
@@ -872,15 +905,39 @@ struct tcp_skb_cb {
 	union {
 		struct {
 			/* There is space for up to 24 bytes */
+#define TCPCB_IN_FLIGHT_BITS 30
+#define TCPCB_IN_FLIGHT_MAX ((1U << TCPCB_IN_FLIGHT_BITS) - 1)
 			__u32 in_flight:30,/* Bytes in flight at transmit */
 			      is_app_limited:1, /* cwnd not fully used? */
 			      unused:1;
 			/* pkts S/ACKed so far upon tx of skb, incl retrans: */
 			__u32 delivered;
+#ifdef __GENKSYMS__
 			/* start of send pipeline phase */
 			u64 first_tx_mstamp;
 			/* when we reached the "delivered" count */
 			u64 delivered_mstamp;
+#else
+			union {
+				u64 __kabi_placeholder_f_tx;
+				struct {
+					/* start of send pipeline phase */
+					u32 first_tx_mstamp;
+#define TCPCB_DELIVERED_CE_MASK ((1U<<20) - 1)
+					u32 delivered_ce:20,   /* packets in flight at transmit */
+			    		unused2:12;
+				};
+			};
+			union {
+				u64 __kabi_placeholder_del_mst;
+				struct {
+					/* when we reached the "delivered" count */
+					u32 delivered_mstamp;
+					/* packets lost so far upon tx of skb */
+					u32 lost;
+				};
+			};
+#endif
 		} tx;   /* only used for outgoing skbs */
 		union {
 			struct inet_skb_parm	h4;
@@ -1008,6 +1065,9 @@ enum tcp_ca_event {
 	CA_EVENT_LOSS,		/* loss timeout */
 	CA_EVENT_ECN_NO_CE,	/* ECT set, but not CE marked */
 	CA_EVENT_ECN_IS_CE,	/* received CE marked IP packet */
+#ifndef __GENKSYMS__
+	CA_EVENT_TLP_RECOVERY,	/* a lost segment was repaired by TLP probe */
+#endif
 };
 
 /* Information about inbound ACK, passed to cong_ops->in_ack_event() */
@@ -1030,7 +1090,11 @@ enum tcp_ca_ack_event_flags {
 #define TCP_CONG_NON_RESTRICTED 0x1
 /* Requires ECN/ECT set on all packets */
 #define TCP_CONG_NEEDS_ECN	0x2
-#define TCP_CONG_MASK	(TCP_CONG_NON_RESTRICTED | TCP_CONG_NEEDS_ECN)
+/* Wants notification of CE events (CA_EVENT_ECN_IS_CE, CA_EVENT_ECN_NO_CE). */
+#define TCP_CONG_WANTS_CE_EVENTS	0x4
+#define TCP_CONG_MASK	(TCP_CONG_NON_RESTRICTED | \
+			 TCP_CONG_NEEDS_ECN | \
+			 TCP_CONG_WANTS_CE_EVENTS)
 
 union tcp_cc_info;
 
@@ -1062,6 +1126,16 @@ struct rate_sample {
 	bool is_app_limited;	/* is sample from packet with bubble in pipe? */
 	bool is_retrans;	/* is sample from retransmission? */
 	bool is_ack_delayed;	/* is this (likely) a delayed ACK? */
+#ifndef __GENKSYMS__
+	u32  last_end_seq;	/* end_seq of most recently ACKed packet */
+	bool is_acking_tlp_retrans_seq;  /* ACKed a TLP retransmit sequence? */
+	bool is_ece;		/* did this ACK have ECN marked? */
+	u32 tx_in_flight;	/* packets in flight at starting timestamp */
+	s32  lost;		/* number of packets lost over interval */
+	s32  delivered_ce;	/* packets delivered w/ CE mark over interval */
+	u32  prior_delivered_ce;/* tp->delivered_ce at "prior_mstamp" */
+	u32  prior_lost;	/* tp->lost at "prior_mstamp" */
+#endif
 };
 
 struct tcp_congestion_ops {
@@ -1137,6 +1211,14 @@ static inline char *tcp_ca_get_name_by_key(u32 key, char *buffer)
 }
 #endif
 
+static inline bool tcp_ca_wants_ce_events(const struct sock *sk)
+{
+	const struct inet_connection_sock *icsk = inet_csk(sk);
+
+	return icsk->icsk_ca_ops->flags & (TCP_CONG_NEEDS_ECN |
+					   TCP_CONG_WANTS_CE_EVENTS);
+}
+
 static inline bool tcp_ca_needs_ecn(const struct sock *sk)
 {
 	const struct inet_connection_sock *icsk = inet_csk(sk);
@@ -1168,6 +1250,26 @@ void tcp_rate_skb_delivered(struct sock *sk, struct sk_buff *skb,
 void tcp_rate_gen(struct sock *sk, u32 delivered, u32 lost,
 		  bool is_sack_reneg, struct rate_sample *rs);
 void tcp_rate_check_app_limited(struct sock *sk);
+
+static inline bool tcp_skb_sent_after(u64 t1, u64 t2, u32 seq1, u32 seq2)
+{
+	return t1 > t2 || (t1 == t2 && after(seq1, seq2));
+}
+
+/* If a retransmit failed due to local qdisc congestion or other local issues,
+ * then we may have called tcp_set_skb_tso_segs() to increase the number of
+ * segments in the skb without increasing the tx.in_flight. In all other cases,
+ * the tx.in_flight should be at least as big as the pcount of the sk_buff.  We
+ * do not have the state to know whether a retransmit failed due to local qdisc
+ * congestion or other local issues, so to avoid spurious warnings we consider
+ * that any skb marked lost may have suffered that fate.
+ */
+static inline bool tcp_skb_tx_in_flight_is_suspicious(u32 skb_pcount,
+						      u32 skb_sacked_flags,
+						      u32 tx_in_flight)
+{
+	return (skb_pcount > tx_in_flight) && !(skb_sacked_flags & TCPCB_LOST);
+}
 
 /* These functions determine how the current flow behaves in respect of SACK
  * handling. SACK is negotiated with the peer, and therefore it can vary
@@ -1211,6 +1313,17 @@ static inline unsigned int tcp_packets_in_flight(const struct tcp_sock *tp)
 }
 
 #define TCP_INFINITE_SSTHRESH	0x7fffffff
+
+static inline u32 tcp_snd_cwnd(const struct tcp_sock *tp)
+{
+	return tp->snd_cwnd;
+}
+
+static inline void tcp_snd_cwnd_set(struct tcp_sock *tp, u32 val)
+{
+	WARN_ON_ONCE((int)val <= 0);
+	tp->snd_cwnd = val;
+}
 
 static inline bool tcp_in_slow_start(const struct tcp_sock *tp)
 {
@@ -2111,6 +2224,111 @@ extern void tcp_rack_advance(struct tcp_sock *tp, u8 sacked, u32 end_seq,
 			     u64 xmit_time);
 extern void tcp_rack_reo_timeout(struct sock *sk);
 extern void tcp_rack_update_reo_wnd(struct sock *sk, struct rate_sample *rs);
+
+/* tcp_plb.c */
+
+/*
+ * Scaling factor for fractions in PLB. For example, tcp_plb_update_state
+ * expects cong_ratio which represents fraction of traffic that experienced
+ * congestion over a single RTT. In order to avoid floating point operations,
+ * this fraction should be mapped to (1 << TCP_PLB_SCALE) and passed in.
+ */
+#define TCP_PLB_SCALE 8
+
+/* State for PLB (Protective Load Balancing) for a single TCP connection. */
+struct tcp_plb_state {
+	u8	consec_cong_rounds:5, /* consecutive congested rounds */
+		unused:3;
+	u32	pause_until; /* jiffies32 when PLB can resume rerouting */
+};
+
+static inline void tcp_plb_init(const struct sock *sk,
+				struct tcp_plb_state *plb)
+{
+	plb->consec_cong_rounds = 0;
+	plb->pause_until = 0;
+}
+void tcp_plb_update_state(const struct sock *sk, struct tcp_plb_state *plb,
+			  const int cong_ratio);
+void tcp_plb_check_rehash(struct sock *sk, struct tcp_plb_state *plb);
+void tcp_plb_update_state_upon_rto(struct sock *sk, struct tcp_plb_state *plb);
+
+/* BBR3 congestion control block */
+struct bbr3 {
+	u32	min_rtt_us;	        /* min RTT in min_rtt_win_sec window */
+	u32	min_rtt_stamp;	        /* timestamp of min_rtt_us */
+	u32	probe_rtt_done_stamp;   /* end time for BBR_PROBE_RTT mode */
+	u32	probe_rtt_min_us;	/* min RTT in probe_rtt_win_ms win */
+	u32	probe_rtt_min_stamp;	/* timestamp of probe_rtt_min_us*/
+	u32     next_rtt_delivered; /* scb->tx.delivered at end of round */
+	u64	cycle_mstamp;	     /* time of this cycle phase start */
+	u32     mode:2,		     /* current bbr_mode in state machine */
+		prev_ca_state:3,     /* CA state on previous ACK */
+		round_start:1,	     /* start of packet-timed tx->ack round? */
+		ce_state:1,          /* If most recent data has CE bit set */
+		bw_probe_up_rounds:5,   /* cwnd-limited rounds in PROBE_UP */
+		try_fast_path:1,	/* can we take fast path? */
+		idle_restart:1,	     /* restarting after idle? */
+		probe_rtt_round_done:1,  /* a BBR_PROBE_RTT round at 4 pkts? */
+		init_cwnd:7,         /* initial cwnd */
+		unused_1:10;
+	u32	pacing_gain:10,	/* current gain for setting pacing rate */
+		cwnd_gain:10,	/* current gain for setting cwnd */
+		full_bw_reached:1,   /* reached full bw in Startup? */
+		full_bw_cnt:2,	/* number of rounds without large bw gains */
+		cycle_idx:2,	/* current index in pacing_gain cycle array */
+		has_seen_rtt:1, /* have we seen an RTT sample yet? */
+		unused_2:6;
+	u32	prior_cwnd;	/* prior cwnd upon entering loss recovery */
+	u32	full_bw;	/* recent bw, to estimate if pipe is full */
+
+	/* For tracking ACK aggregation: */
+	u64	ack_epoch_mstamp;	/* start of ACK sampling epoch */
+	u16	extra_acked[2];		/* max excess data ACKed in epoch */
+	u32	ack_epoch_acked:20,	/* packets (S)ACKed in sampling epoch */
+		extra_acked_win_rtts:5,	/* age of extra_acked, in round trips */
+		extra_acked_win_idx:1,	/* current index in extra_acked array */
+	/* BBR v3 state: */
+		full_bw_now:1,		/* recently reached full bw plateau? */
+		startup_ecn_rounds:2,	/* consecutive hi ECN STARTUP rounds */
+		loss_in_cycle:1,	/* packet loss in this cycle? */
+		ecn_in_cycle:1,		/* ECN in this cycle? */
+		unused_3:1;
+	u32	loss_round_delivered; /* scb->tx.delivered ending loss round */
+	u32	undo_bw_lo;	     /* bw_lo before latest losses */
+	u32	undo_inflight_lo;    /* inflight_lo before latest losses */
+	u32	undo_inflight_hi;    /* inflight_hi before latest losses */
+	u32	bw_latest;	 /* max delivered bw in last round trip */
+	u32	bw_lo;		 /* lower bound on sending bandwidth */
+	u32	bw_hi[2];	 /* max recent measured bw sample */
+	u32	inflight_latest; /* max delivered data in last round trip */
+	u32	inflight_lo;	 /* lower bound of inflight data range */
+	u32	inflight_hi;	 /* upper bound of inflight data range */
+	u32	bw_probe_up_cnt; /* packets delivered per inflight_hi incr */
+	u32	bw_probe_up_acks;  /* packets (S)ACKed since inflight_hi incr */
+	u32	probe_wait_us;	 /* PROBE_DOWN until next clock-driven probe */
+	u32	prior_rcv_nxt;	/* tp->rcv_nxt when CE state last changed */
+	u32	ecn_eligible:1,	/* sender can use ECN (RTT, handshake)? */
+		ecn_alpha:9,	/* EWMA delivered_ce/delivered; 0..256 */
+		bw_probe_samples:1,    /* rate samples reflect bw probing? */
+		prev_probe_too_high:1, /* did last PROBE_UP go too high? */
+		stopped_risky_probe:1, /* last PROBE_UP stopped due to risk? */
+		rounds_since_probe:8,  /* packet-timed rounds since probed bw */
+		loss_round_start:1,    /* loss_round_delivered round trip? */
+		loss_in_round:1,       /* loss marked in this round trip? */
+		ecn_in_round:1,	       /* ECN marked in this round trip? */
+		ack_phase:3,	       /* bbr_ack_phase: meaning of ACKs */
+		loss_events_in_round:4,/* losses in STARTUP round */
+		initialized:1;	       /* has bbr_init() been called? */
+	u32	alpha_last_delivered;	 /* tp->delivered    at alpha update */
+	u32	alpha_last_delivered_ce; /* tp->delivered_ce at alpha update */
+
+	u8	unused_4;		/* to preserve alignment */
+	struct tcp_plb_state plb;
+
+	/* react to a specific lost skb (optional) */
+	void (*skb_marked_lost)(struct sock *sk, const struct sk_buff *skb);
+};
 
 /* At how many usecs into the future should the RTO fire? */
 static inline s64 tcp_rto_delta_us(const struct sock *sk)

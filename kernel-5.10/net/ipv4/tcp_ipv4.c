@@ -2858,6 +2858,7 @@ static void __net_exit tcp_sk_exit(struct net *net)
 static int __net_init tcp_sk_init(struct net *net)
 {
 	int res, cpu, cnt;
+	struct tcp_plb_net_context *ctx, *init_ctx;
 
 	net->ipv4.tcp_sk = alloc_percpu(struct sock *);
 	if (!net->ipv4.tcp_sk)
@@ -2953,6 +2954,18 @@ static int __net_init tcp_sk_init(struct net *net)
 	spin_lock_init(&net->ipv4.tcp_fastopen_ctx_lock);
 	net->ipv4.sysctl_tcp_fastopen_blackhole_timeout = 0;
 	atomic_set(&net->ipv4.tfo_active_disable_times, 0);
+
+	ctx = tcp_get_plb_ctx(net);
+	init_ctx = tcp_get_plb_ctx(&init_net);
+
+	if (ctx && init_ctx && !net_eq(net, &init_net))
+	{
+		ctx->params.sysctl_tcp_plb_enabled = init_ctx->params.sysctl_tcp_plb_enabled; 
+		ctx->params.sysctl_tcp_plb_idle_rehash_rounds = init_ctx->params.sysctl_tcp_plb_idle_rehash_rounds; 
+		ctx->params.sysctl_tcp_plb_rehash_rounds = init_ctx->params.sysctl_tcp_plb_rehash_rounds; 
+		ctx->params.sysctl_tcp_plb_suspend_rto_sec = init_ctx->params.sysctl_tcp_plb_suspend_rto_sec; 
+		ctx->params.sysctl_tcp_plb_cong_thresh = init_ctx->params.sysctl_tcp_plb_cong_thresh; 
+	}
 
 	/* Reno is always built in */
 	if (!net_eq(net, &init_net) &&
