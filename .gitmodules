@@ -1,6 +1,6 @@
 [submodule "kernel-5.10/KernelSU-Next"]
 	path = kernel-5.10/KernelSU-Next
-	url = https://github.com/KernelSU-Next/KernelSU-Next.git
+	url = https://github.com/pershoot/KernelSU-Next.git
 [submodule "kernel-5.10/Baseband-guard"]
 	path = kernel-5.10/Baseband-guard
 	url = https://github.com/vc-teahouse/Baseband-guard.git
