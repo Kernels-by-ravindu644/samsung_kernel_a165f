@@ -45,4 +45,4 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           artifacts: "dist/*.zip"
           allowUpdates: true
-          body: "Automated build of Droidspaces-KSUN Kernel.\nCommit: ${{ github.sha }}"
+          body: "Automated build of Droidspaces-KSUN-SuSFS Kernel.\nCommit: ${{ github.sha }}"

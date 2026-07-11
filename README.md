@@ -6,6 +6,7 @@ A custom kernel build for the Samsung Galaxy A16 4G (SM-A165F) series, built wit
 
 * Upstream source: Samsung OSRC (version 5.10.226 - from A165FXXU3BYE6)
 * KernelSU-Next: v3.3.0
+* SuSFS: v2.2.0
 * Droidspaces, LXC and Docker support
 * Baseband Guard support
 * NTsync support
